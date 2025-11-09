@@ -12,17 +12,19 @@
       overflow: hidden;
     }
 
+    /* layout grid: left controls/explain, center canvas, right info */
+    #layout { display: grid; grid-template-columns: minmax(260px,360px) 1fr minmax(300px,420px); gap:12px; height:100vh; }
+    #left { padding:12px; overflow:auto; }
+    #center { position:relative; }
+    #right { padding:12px; overflow:auto; }
+
     #controls {
-      position: absolute;
-      top: 12px;
-      left: 12px;
       background: white;
       padding: 12px 14px;
       border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      z-index: 20;
-      max-width: 320px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
       font-size: 14px;
+      max-width: 100%;
     }
 
     #controls label { display: inline-block; width: 60px; }
@@ -44,9 +46,20 @@
 
     button:hover { background-color: #0056b3; }
 
-    svg {
-      width: 100vw;
-      height: 100vh;
+    /* center canvas fills the center grid cell */
+    #center svg {
+      position: absolute;
+      inset: 0; /* top:0; right:0; bottom:0; left:0 */
+      width: 100%;
+      height: 100%;
+      background: transparent;
+    }
+
+    /* small screens: stack columns vertically */
+    @media (max-width: 900px) {
+      #layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+      #center { min-height: 56vh; }
+      #left, #right { padding:10px; }
     }
 
     circle {
@@ -77,21 +90,16 @@
       font-weight: normal;
     }
 
-    /* info panel on the right */
+    /* info panel (right column) */
     #info {
-      position: absolute;
-      right: 12px;
-      top: 12px;
-      width: 360px;
-      max-height: calc(100vh - 24px);
-      overflow: auto;
       background: white;
       padding: 12px;
       border-radius: 10px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-      z-index: 20;
       font-family: monospace;
       font-size: 13px;
+      max-height: calc(100vh - 24px);
+      overflow:auto;
     }
 
     #state { white-space: pre; background:#f4f6f8; padding:8px; border-radius:6px; }
@@ -102,49 +110,76 @@
   </style>
 </head>
 <body>
-  <div id="controls">
-    <div style="margin-bottom:6px">
-      <label>Nodes:</label>
-      <input id="nodeCount" type="number" value="6" min="2" max="20">
-      <button onclick="initialize()">Initialize</button>
+  <div id="layout">
+    <div id="left">
+      <div id="controls">
+        <div style="margin-bottom:6px">
+          <label>Nodes:</label>
+          <input id="nodeCount" type="number" value="6" min="2" max="20">
+          <button onclick="initialize()">Initialize</button>
+        </div>
+
+        <div style="margin-bottom:6px">
+          <label>Union:</label>
+          <input id="a" type="number" placeholder="A" style="width:60px">
+          <input id="b" type="number" placeholder="B" style="width:60px">
+          <button onclick="performUnion()">Union(A,B)</button>
+          <button onclick="checkConnected()" style="margin-left:6px">Connected?</button>
+        </div>
+
+        <div style="margin-bottom:6px">
+          <label>Find:</label>
+          <input id="f" type="number" placeholder="X" style="width:70px">
+          <button onclick="performFind()">Find(X)</button>
+        </div>
+
+        <div style="margin-bottom:6px">
+          <label>Strategy:</label>
+          <select id="strategy">
+            <option value="size">Union by size</option>
+            <option value="rank">Union by rank</option>
+          </select>
+          <button onclick="clearLog()" style="float:right">Clear Log</button>
+        </div>
+      </div>
+
+      <div id="explain" style="max-width:100%; background:white; padding:12px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.06); margin-top:12px; font-size:14px;">
+        <h2 style="margin:4px 0 8px 0; font-size:16px;">Disjoint Set (Union–Find)</h2>
+        <p style="margin:0 0 8px 0;">A disjoint set (or union–find) is a data structure that tracks a partition of elements into non-overlapping sets. It supports two primary operations efficiently: <strong>find(x)</strong> — returns the representative (root) of x's set, and <strong>union(a, b)</strong> — merges the sets containing a and b. Optimizations like <em>union by size/rank</em> and <em>path compression</em> make these operations nearly constant time.</p>
+
+        <div style="font-size:13px; color:#333;">
+          <strong>Example walkthrough (nodes 0..5)</strong>
+          <ol style="padding-left:18px; margin:6px 0 0 0;">
+            <li>Start: each node in its own set: {0},{1},{2},{3},{4},{5}.</li>
+            <li>Union(0,1) → merge sets: {0,1}, {2}, {3}, {4}, {5}.</li>
+            <li>Union(2,3) → {0,1}, {2,3}, {4}, {5}.</li>
+            <li>Union(1,2) → merges the two groups into {0,1,2,3}. A subsequent Find(3) returns the group's root (e.g. 0) and path compression attaches members directly to the root for faster future finds.</li>
+          </ol>
+        </div>
+      </div>
     </div>
 
-    <div style="margin-bottom:6px">
-      <label>Union:</label>
-      <input id="a" type="number" placeholder="A" style="width:60px">
-      <input id="b" type="number" placeholder="B" style="width:60px">
-      <button onclick="performUnion()">Union(A,B)</button>
-      <button onclick="checkConnected()" style="margin-left:6px">Connected?</button>
+    <div id="center">
+      <svg id="canvas"></svg>
     </div>
 
-    <div style="margin-bottom:6px">
-      <label>Find:</label>
-      <input id="f" type="number" placeholder="X" style="width:70px">
-      <button onclick="performFind()">Find(X)</button>
+    <div id="right">
+      <div id="info">
+        <div><strong>State</strong></div>
+        <pre id="state">parent: []\nsize: []\nrank: []</pre>
+        <div style="margin-top:8px"><strong>Action Log</strong></div>
+        <div id="log"></div>
+      </div>
     </div>
-
-    <div style="margin-bottom:6px">
-      <label>Strategy:</label>
-      <select id="strategy">
-        <option value="size">Union by size</option>
-        <option value="rank">Union by rank</option>
-      </select>
-      <button onclick="clearLog()" style="float:right">Clear Log</button>
-    </div>
-  </div>
-
-  <svg id="canvas"></svg>
-
-  <div id="info">
-    <div><strong>State</strong></div>
-    <pre id="state">parent: []\nsize: []\nrank: []</pre>
-    <div style="margin-top:8px"><strong>Action Log</strong></div>
-    <div id="log"></div>
   </div>
 
   <script>
-  let width = window.innerWidth, height = window.innerHeight;
-    // node radius is responsive to viewport
+  // The canvas size is taken from the SVG element (so it sits correctly between left/right panels)
+  const svgEl = document.getElementById ? document.getElementById('canvas') : null;
+  let width = svgEl ? svgEl.clientWidth : window.innerWidth;
+  let height = svgEl ? svgEl.clientHeight : window.innerHeight;
+
+    // node radius is responsive to the canvas size (not the full window)
     function computeNodeRadius() {
       return Math.max(18, Math.min(44, Math.floor(Math.min(width, height) / 25)));
     }
@@ -503,7 +538,9 @@
 
     // Recompute layout on resize to keep things balanced and responsive
     window.addEventListener('resize', () => {
-      width = window.innerWidth; height = window.innerHeight;
+      // read the current svg client dimensions (SVG is centered between panels)
+      width = svg.node() ? svg.node().clientWidth : window.innerWidth;
+      height = svg.node() ? svg.node().clientHeight : window.innerHeight;
       NODE_RADIUS = computeNodeRadius();
       // recompute circular layout while preserving set structure
       const n = nodes.length;
@@ -518,6 +555,9 @@
       updateGraph();
     });
 
+    // initialize canvas size from SVG before creating nodes
+    width = svg.node() ? svg.node().clientWidth : window.innerWidth;
+    height = svg.node() ? svg.node().clientHeight : window.innerHeight;
     initialize();
   </script>
 </body>
